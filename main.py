@@ -1,4 +1,6 @@
 import json
+import os
+
 from prettytable import PrettyTable
 import yfinance as yf
 from colorama import Fore, Style
@@ -12,11 +14,15 @@ class StockManager:
             json.dump(self.stock, file)
 
     def load_from_file(self, filename):
-        try:
-            with open(filename, 'r') as file:
-                self.stock = json.load(file)
-        except FileNotFoundError:
-            print("File not found. Starting with an empty stock.")
+        if os.path.exists(filename):
+            try:
+                with open(filename, 'r') as file:
+                    self.stock = json.load(file)
+            except json.JSONDecodeError:
+                print(f"Error decoding JSON from {filename}. Starting with an empty stock.")
+        else:
+            print(f"File not found: {filename}. Creating a new file.")
+            self.save_to_file(filename)
 
     def add_stock(self, item, quantity, price):
             if item in self.stock:
@@ -62,6 +68,10 @@ class StockManager:
             print(f"Error: {item} not found in stock.")
 
     def display_stock(self):
+        if not self.stock:
+            print("No stock found.")
+            return
+
         table = PrettyTable()
         table.field_names = ["Stock Code", "Quantity", "Price Bought (Rp)", "Market Price", "Market Value (Rp)", "Profit/Loss (Rp)", "Percentage Change"]
 
@@ -75,42 +85,50 @@ class StockManager:
             color = Fore.GREEN if profit_loss >= 0 else Fore.RED
 
             table.add_row([item, info['quantity'], f"{info['price']:.2f}", f"{market_price:.2f}", f"{market_value:.2f}",
-                           f"{color}{profit_loss:.2f}{Style.RESET_ALL}", f"{percentage_change:.2f}%"])
+                        f"{color}{profit_loss:.2f}{Style.RESET_ALL}", f"{color}{percentage_change:.2f}%{Style.RESET_ALL}"])
 
         print("\nCurrent Stock:")
         print(table)
-        print(f"Last updated: {stock_data.history(period='1d').index[-1]}")  
+        print( f"Last updated: {stock_data.history(period='1d').index[-1].strftime('%Y-%m-%d')}")
+
 
 def main():
     stock_manager = StockManager()
-    data_file = "stock_data.json"  # Adjust the filename as needed
-
-    # Load existing stock data from file
+    data_file = "stock_data.json"
     stock_manager.load_from_file(data_file)
 
     while True:
-        print("\n1. Add stock\n2. Remove stock\n3. Update stock\n4. Delete stock\n5. Display portofolio\n6. Save and Quit")
+        print("\n1. Add stock\n2. Remove stock\n3. Update stock\n4. Delete stock\n5. Display portfolio\n6. Save and Quit")
         choice = input("Enter your choice (1/2/3/4/5/6): ")
 
         if choice == "1":
-            item = str(input("Enter stock code: ").upper())
-            quantity = int(input("Enter quantity in lots to add: "))
-            price = float(input("Enter price per unit: "))
-            stock_manager.add_stock(item, quantity, price)
+            try:
+                item = str(input("Enter stock code: ").upper().strip())
+                quantity = int(input("Enter quantity in lots to add: "))
+                price = float(input("Enter price per unit: "))
+                stock_manager.add_stock(item, quantity, price)
+            except ValueError:
+                print("Invalid input. Quantity and price must be numeric values.")
 
         elif choice == "2":
-            item = str(input("Enter stock code: ").upper())
-            quantity = int(input("Enter quantity to remove: "))
-            stock_manager.remove_stock(item, quantity)
+            try:
+                item = str(input("Enter stock code: ").upper().strip())
+                quantity = int(input("Enter quantity to remove: "))
+                stock_manager.remove_stock(item, quantity)
+            except ValueError:
+                print("Invalid input. Quantity must be a numeric value.")
 
         elif choice == "3":
-            item = str(input("Enter stock code: ").upper())
-            new_quantity = int(input("Enter new quantity in lots: "))
-            new_price = float(input("Enter new price per unit: "))
-            stock_manager.update_stock(item, new_quantity, new_price)
+            try:
+                item = str(input("Enter stock code: ").upper().strip())
+                new_quantity = int(input("Enter new quantity in lots: "))
+                new_price = float(input("Enter new price per unit: "))
+                stock_manager.update_stock(item, new_quantity, new_price)
+            except ValueError:
+                print("Invalid input. New quantity and price must be numeric values.")
 
         elif choice == "4":
-            item = str(input("Enter stock code: ").upper())
+            item = str(input("Enter stock code: ").upper().strip())
             stock_manager.delete_stock(item)
 
         elif choice == "5":
@@ -124,6 +142,22 @@ def main():
         else:
             print("Invalid choice. Please enter 1, 2, 3, 4, 5, or 6.")
 
+        stock_manager.save_to_file(data_file)
 
 if __name__ == "__main__":
+    print("==============================================================================")
+    print(" $$$$$$\                                $$$$$$\ $$$$$$$\  $$\   $$\  $$$$$$\  ")
+    print("$$  __$$\                               \_$$  _|$$  __$$\ $$ |  $$ |$$  __$$\ ")
+    print("$$ /  $$ | $$$$$$\   $$$$$$\  $$$$$$$\    $$ |  $$ |  $$ |\$$\ $$  |\__/  $$ |")
+    print("$$ |  $$ |$$  __$$\ $$  __$$\ $$  __$$\   $$ |  $$ |  $$ | \$$$$  /  $$$$$$  |")
+    print("$$ |  $$ |$$ /  $$ |$$$$$$$$ |$$ |  $$ |  $$ |  $$ |  $$ | $$  $$<  $$  ____/ ")
+    print("$$ |  $$ |$$ |  $$ |$$   ____|$$ |  $$ |  $$ |  $$ |  $$ |$$  /\$$\ $$ |      ")
+    print(" $$$$$$  |$$$$$$$  |\$$$$$$$\ $$ |  $$ |$$$$$$\ $$$$$$$  |$$ /  $$ |$$$$$$$$\ ")
+    print(" \______/ $$  ____/  \_______|\__|  \__|\______|\_______/ \__|  \__|\________|")
+    print("          $$ |                                                                ")
+    print("          $$ |                                                                ")
+    print("          \__|                                                                ")
+    print("--------- Indonesia Stock Exchange Stock Portfolio Management System ---------")
+    print("------------------- Made by kangwijen, 2023. Version 1.0.1 -------------------")
+    print("==============================================================================")
     main()
