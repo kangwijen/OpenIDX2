@@ -7,9 +7,9 @@ This program serves as a Stock Portfolio Management System tailored for the Indo
 
 **Key Features:**
 
-1. **CRUD Operation for Stock**
+1. **Portofolio Management Calculations**
 2. **Portofolio Risk Calculations**
-3. **Real-Time Market Data Using yfinance**
-4. **Pretty Display Output**
+3. **Quantitative Analysis**
+4. **Real-Time Market Data**
 
 *Disclaimer: This program is for educational purposes and personal use. The developer is not responsible for any financial decisions made based on the information provided by the program.*
