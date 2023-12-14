@@ -1,11 +1,14 @@
 import json
 import os
 
-from prettytable import PrettyTable
-import yfinance as yf
-from colorama import Fore, Style
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import yfinance as yf
+from prettytable import PrettyTable
+from colorama import Fore, Style
 import statsmodels.api as sm
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 class StockManager:
     def __init__(self):
@@ -169,27 +172,74 @@ class StockManager:
         alpha = round(results.params['const'], 2)
         return alpha
 
+    def calculate_sharpe_ratio(self, risk_free_rate=0):
+        benchmark_data = yf.Ticker("^JKSE").history(period="1y")["Close"]
+
+        individual_sharpe_ratios = {}
+
+        for item, info in self.stock.items():
+            stock_data = yf.Ticker(f"{item}.JK").history(period="1y")["Close"]
+            stock_returns = (stock_data / stock_data.shift(1) - 1).dropna()
+            avg_stock_return = stock_returns.mean()
+            std_stock_return = stock_returns.std()
+            sharpe_ratio = (avg_stock_return - risk_free_rate) / std_stock_return
+            individual_sharpe_ratios[item] = sharpe_ratio
+
+        return individual_sharpe_ratios
+
     def display_risk_metrics(self):
         if not self.stock:
             print("No stock found.")
             return
 
         table = PrettyTable()
-        table.field_names = ["Stock", "Volatility (Annualized)", "Alpha (Relative to IHSG)", "Beta (Relative to IHSG)"]
+        table.field_names = ["Stock", "Volatility", "Alpha", "Beta", "Sharpe Ratio"]
+        table.min_width["Stock"] = 12
+        table.min_width["Volatility"] = 12
+        table.min_width["Alpha"] = 12
+        table.min_width["Beta"] = 12
+        table.min_width["Sharpe Ratio"] = 12
 
         color_volatility = lambda x: Fore.GREEN if x <= 0.33 else Fore.YELLOW if x <= 0.66 else Fore.RED
         color_alpha = lambda x: Fore.GREEN if x > 0 else Fore.YELLOW if x == 0 else Fore.RED
         color_beta = lambda x: Fore.GREEN if x == 1 else Fore.YELLOW if x <= 1 else Fore.RED
+        color_sharpe = lambda x: Fore.GREEN if x >= 1 else Fore.YELLOW if x >= 0 else Fore.RED
 
         for item, info in self.stock.items():
             volatility = self.calculate_volatility(item)
             alpha = self.calculate_alpha(item)
             beta = self.calculate_beta(item)
+            sharpe = self.calculate_sharpe_ratio()[item] 
 
-            table.add_row([item, f"{color_volatility(volatility)}{volatility:.2f}{Style.RESET_ALL}", f"{color_alpha(alpha)}{alpha:.2f}{Style.RESET_ALL}", f"{color_beta(beta)}{beta:.2f}{Style.RESET_ALL}"])
+            table.add_row([item, f"{color_volatility(volatility)}{volatility:.2f}{Style.RESET_ALL}", f"{color_alpha(alpha)}{alpha:.2f}{Style.RESET_ALL}", \
+                f"{color_beta(beta)}{beta:.2f}{Style.RESET_ALL}", f"{color_sharpe(sharpe)}{sharpe:.2f}{Style.RESET_ALL}"])
 
         print("\nRisk Metrics:")
         print(table)
+        print("All annualized, relative to IHSG.")
+
+class QuantitativeAnalysis:
+    def __init__(self, symbol):
+        self.symbol = symbol
+        self.stock_data = yf.download(f"{symbol}.JK", progress=False)
+
+    def sarimax_forecast(self, order=(1, 1, 1), exog_order=(1, 0, 1), days=7):
+        ts = self.stock_data['Close']
+        exog = self.stock_data['Volume']
+
+        model = SARIMAX(ts, order=order, exog=exog, exog_order=exog_order)
+        model_fit = model.fit()
+        predictions = model_fit.predict(start=len(ts), end=len(ts) + days - 1, exog=exog[-days:])
+
+        plt.plot(ts, label='Actual')
+        plt.xlim(ts.index[0], ts.index[-1] + pd.DateOffset(days=len(predictions)))
+        prediction_dates = pd.date_range(start=ts.index[-1] + pd.DateOffset(days=1), periods=len(predictions))
+        plt.plot(prediction_dates, predictions, label='Predicted')
+        plt.xlabel('Date')
+        plt.ylabel('Stock Price')
+        plt.title(f'{self.symbol} Stock Price - Actual vs Predicted (SARIMAX)')
+        plt.legend()
+        plt.show()
 
 def main():
     stock_manager = StockManager()
@@ -198,30 +248,32 @@ def main():
 
     while True:
         os.system('cls' or 'clear')
-        print("==============================================================================")
-        print(" $$$$$$\                                $$$$$$\ $$$$$$$\  $$\   $$\  $$$$$$\  ")
-        print("$$  __$$\                               \_$$  _|$$  __$$\ $$ |  $$ |$$  __$$\ ")
-        print("$$ /  $$ | $$$$$$\   $$$$$$\  $$$$$$$\    $$ |  $$ |  $$ |\$$\ $$  |\__/  $$ |")
-        print("$$ |  $$ |$$  __$$\ $$  __$$\ $$  __$$\   $$ |  $$ |  $$ | \$$$$  /  $$$$$$  |")
-        print("$$ |  $$ |$$ /  $$ |$$$$$$$$ |$$ |  $$ |  $$ |  $$ |  $$ | $$  $$<  $$  ____/ ")
-        print("$$ |  $$ |$$ |  $$ |$$   ____|$$ |  $$ |  $$ |  $$ |  $$ |$$  /\$$\ $$ |      ")
-        print(" $$$$$$  |$$$$$$$  |\$$$$$$$\ $$ |  $$ |$$$$$$\ $$$$$$$  |$$ /  $$ |$$$$$$$$\ ")
-        print(" \______/ $$  ____/  \_______|\__|  \__|\______|\_______/ \__|  \__|\________|")
-        print("          $$ |                                                                ")
-        print("          $$ |                                                                ")
-        print("          \__|                                                                ")
-        print("--------- Indonesia Stock Exchange Stock Portfolio Management System ---------")
-        print("------------------- Made by kangwijen, 2023. Version 1.0.2 -------------------")
-        print("==============================================================================")
-        print("\n1. Portfolio\n2. Analysis\n3. Save and Quit")
-        choice = input("Enter your choice (1/2/3): ")
+        print(f"==============================================================================")
+        print(f" $$$$$$\                                $$$$$$\ $$$$$$$\  $$\   $$\  $$$$$$\  ")
+        print(f"$$  __$$\                               \_$$  _|$$  __$$\ $$ |  $$ |$$  __$$\ ")
+        print(f"$$ /  $$ | $$$$$$\   $$$$$$\  $$$$$$$\    $$ |  $$ |  $$ |\$$\ $$  |\__/  $$ |")
+        print(f"$$ |  $$ |$$  __$$\ $$  __$$\ $$  __$$\   $$ |  $$ |  $$ | \$$$$  /  $$$$$$  |")
+        print(f"$$ |  $$ |$$ /  $$ |$$$$$$$$ |$$ |  $$ |  $$ |  $$ |  $$ | $$  $$<  $$  ____/ ")
+        print(f"$$ |  $$ |$$ |  $$ |$$   ____|$$ |  $$ |  $$ |  $$ |  $$ |$$  /\$$\ $$ |      ")
+        print(f" $$$$$$  |$$$$$$$  |\$$$$$$$\ $$ |  $$ |$$$$$$\ $$$$$$$  |$$ /  $$ |$$$$$$$$\ ")
+        print(f" \______/ $$  ____/  \_______|\__|  \__|\______|\_______/ \__|  \__|\________|")
+        print(f"          $$ |                                                                ")
+        print(f"          $$ |                                                                ")
+        print(f"          \__|                                                                ")
+        print(f"--------- Indonesia Stock Exchange Stock Portfolio Management System ---------")
+        print(f"--------------------- and Quantitative Analysis Platform ---------------------")
+        print(f"------------------- Made by kangwijen, 2023. Version 1.1.0 -------------------")
+        print(f"==============================================================================")
+        print(f"{Fore.RED}Disclaimer: The developer is not responsible for any financial decisions made\n              based on the information provided by the program.{Style.RESET_ALL}")
+        print("\n1. Portfolio Management\n2. Portfolio Analysis\n3. Stock Analysis\n4. Save and Quit")
+        choice = input("Enter your choice: ")
 
         if choice == "1":
             quit = False
 
             while not quit:
                 print("\n1. Add stock\n2. Remove stock\n3. Update stock\n4. Delete stock\n5. Display portfolio\n6. Return")
-                choice = input("Enter your choice (1/2/3/4/5/6): ")
+                choice = input("Enter your choice: ")
 
                 if choice == "1":
                     try:
@@ -260,7 +312,7 @@ def main():
                     quit = True
 
                 else:
-                    print("Invalid choice. Please enter 1, 2, 3, 4, 5, or 6.")
+                    print("Invalid choice.")
 
                 stock_manager.save_to_file(data_file)
 
@@ -269,7 +321,7 @@ def main():
 
             while not quit:
                 print("\n1. Portfolio Performance\n2. Portfolio Risk Metrics\n3. Return")
-                choice = input("Enter your choice (1/2/3): ")
+                choice = input("Enter your choice: ")
 
                 if choice == "1":
                     stock_manager.overall_portfolio_performance()
@@ -279,10 +331,38 @@ def main():
                 
                 elif choice == "3":
                     quit = True
-        
+
+                else:
+                    print("Invalid choice.")
+
         elif choice == "3":
+            quit = False
+
+            while not quit:
+                print("\n1. SARIMAX Forecast\n3. Return")
+                choice = input("Enter your choice: ")
+
+                if choice == "1":
+                    item = str(input("Enter stock code: ").upper().strip())
+                    day = int(input("Enter number of days to forecast: "))
+                    stock_forecast = QuantitativeAnalysis(symbol=item) 
+                    stock_forecast.sarimax_forecast(days=day)
+
+                elif choice == "2":
+                    print("Coming Soon!")
+
+                elif choice == "3":
+                    quit = True
+
+                else:
+                    print("Invalid choice.")
+        
+        elif choice == "4":
             stock_manager.save_to_file(data_file)
             break
+
+        else:
+            print("Invalid choice.")
 
 if __name__ == "__main__":
     main()
