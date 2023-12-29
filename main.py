@@ -330,7 +330,7 @@ def main():
         print(f"          \__|                                                                ")
         print(f"--------- Indonesia Stock Exchange Stock Portfolio Management System ---------")
         print(f"--------------------- and Quantitative Analysis Platform ---------------------")
-        print(f"------------------- Made by kangwijen, 2023. Version 1.1.0 -------------------")
+        print(f"------------------- Made by kangwijen, 2023. Version 1.2.0 -------------------")
         print(f"==============================================================================")
         print(f"{Fore.RED}Disclaimer: The developer is not responsible for any financial decisions made\n              based on the information provided by the program.{Style.RESET_ALL}")
         print("\n1. Portfolio Management\n2. Portfolio Analysis\n3. Stock Forecasting\n4. Stock Calculator\n5. Save and Quit")
