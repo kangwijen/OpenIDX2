@@ -7,9 +7,10 @@ This program serves as a Stock Portfolio Management System tailored for the Indo
 
 **Key Features:**
 
-1. **Portofolio Management Calculations**
+1. **Portofolio Management**
 2. **Portofolio Risk Calculations**
-3. **Quantitative Analysis**
+3. **Stock Quantitative Analysis**
+4. **Stock Prediction with AI**
 4. **Real-Time Market Data**
 
 *Disclaimer: This program is for educational purposes and personal use. The developer is not responsible for any financial decisions made based on the information provided by the program.*
