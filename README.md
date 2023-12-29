@@ -11,6 +11,6 @@ This program serves as a Stock Portfolio Management System tailored for the Indo
 2. **Portofolio Risk Calculations**
 3. **Stock Quantitative Analysis**
 4. **Stock Prediction with AI**
-4. **Real-Time Market Data**
+5. **Real-Time Market Data**
 
 *Disclaimer: This program is for educational purposes and personal use. The developer is not responsible for any financial decisions made based on the information provided by the program.*
