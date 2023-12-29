@@ -1,5 +1,5 @@
-import json
 import os
+import json
 
 import pandas as pd
 import numpy as np
@@ -9,8 +9,11 @@ from prettytable import PrettyTable
 from colorama import Fore, Style
 import statsmodels.api as sm
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-class StockManager:
+class PortofolioManager:
     def __init__(self):
         self.stock = {}
 
@@ -28,6 +31,9 @@ class StockManager:
         else:
             print(f"File not found: {filename}. Creating a new file.")
             self.save_to_file(filename)
+
+    def get_all_stocks(self):
+        return self.stock.copy()
 
     def add_stock(self, item, quantity, price):
             if item in self.stock:
@@ -72,7 +78,7 @@ class StockManager:
         else:
             print(f"Error: {item} not found in stock.")
 
-    def display_stock(self):
+    def display_portofolio(self):
         if not self.stock:
             print("No stock found.")
             return
@@ -95,9 +101,15 @@ class StockManager:
         print("\nCurrent Stock:")
         print(table)
         print( f"Last updated: {stock_data.history(period='1d').index[-1].strftime('%Y-%m-%d')}")
-    
+
+class PortofolioAnalysis:
+    def __init__(self, stock_manager):
+        self.stock_manager = stock_manager
+
     def overall_portfolio_performance(self):
-        if not self.stock:
+        stocks = self.stock_manager.get_all_stocks()
+
+        if not stocks:
             print("No stock found.")
             return
 
@@ -107,7 +119,7 @@ class StockManager:
         total_investment = 0
         total_market_value = 0
 
-        for item, info in self.stock.items():
+        for item, info in stocks.items():
             stock_data = yf.Ticker(f"{item}.JK")
             market_price = stock_data.history(period="1d")["Close"][0]
             market_value = market_price * info['quantity'] * 100
@@ -126,7 +138,7 @@ class StockManager:
 
         print("\nOverall Portfolio Performance:")
         print(table)
-        print( f"Last updated: {stock_data.history(period='1d').index[-1].strftime('%Y-%m-%d')}")
+        print(f"Last updated: {stock_data.history(period='1d').index[-1].strftime('%Y-%m-%d')}")
 
     def calculate_volatility(self, item):
         lookback_period=252
@@ -173,11 +185,15 @@ class StockManager:
         return alpha
 
     def calculate_sharpe_ratio(self, risk_free_rate=0):
-        benchmark_data = yf.Ticker("^JKSE").history(period="1y")["Close"]
+        stocks = self.stock_manager.get_all_stocks()
+
+        if not stocks:
+            print("No stock found.")
+            return
 
         individual_sharpe_ratios = {}
 
-        for item, info in self.stock.items():
+        for item, info in stocks.items():
             stock_data = yf.Ticker(f"{item}.JK").history(period="1y")["Close"]
             stock_returns = (stock_data / stock_data.shift(1) - 1).dropna()
             avg_stock_return = stock_returns.mean()
@@ -188,7 +204,9 @@ class StockManager:
         return individual_sharpe_ratios
 
     def display_risk_metrics(self):
-        if not self.stock:
+        stocks = self.stock_manager.get_all_stocks()
+
+        if not stocks:
             print("No stock found.")
             return
 
@@ -205,7 +223,9 @@ class StockManager:
         color_beta = lambda x: Fore.GREEN if x == 1 else Fore.YELLOW if x <= 1 else Fore.RED
         color_sharpe = lambda x: Fore.GREEN if x >= 1 else Fore.YELLOW if x >= 0 else Fore.RED
 
-        for item, info in self.stock.items():
+        last_updated_date = None  # Initialize outside the loop
+
+        for item, info in stocks.items():
             volatility = self.calculate_volatility(item)
             alpha = self.calculate_alpha(item)
             beta = self.calculate_beta(item)
@@ -214,9 +234,13 @@ class StockManager:
             table.add_row([item, f"{color_volatility(volatility)}{volatility:.2f}{Style.RESET_ALL}", f"{color_alpha(alpha)}{alpha:.2f}{Style.RESET_ALL}", \
                 f"{color_beta(beta)}{beta:.2f}{Style.RESET_ALL}", f"{color_sharpe(sharpe)}{sharpe:.2f}{Style.RESET_ALL}"])
 
+            stock_data = yf.Ticker(f"{item}.JK")
+            last_updated_date = stock_data.history(period='1d').index[-1].strftime('%Y-%m-%d')
+
         print("\nRisk Metrics:")
         print(table)
         print("All annualized, relative to IHSG.")
+        print(f"Last updated: {last_updated_date}")
 
 class QuantitativeAnalysis:
     def __init__(self, symbol):
@@ -241,8 +265,52 @@ class QuantitativeAnalysis:
         plt.legend()
         plt.show()
 
+    def lstm_forecast(self, days=7):
+        ts_close = self.stock_data['Close'].values.reshape(-1, 1)
+        ts_volume = self.stock_data['Volume'].values.reshape(-1, 1)
+        scaler_close = MinMaxScaler(feature_range=(0, 1))
+        scaler_volume = MinMaxScaler(feature_range=(0, 1))
+        ts_close_scaled = scaler_close.fit_transform(ts_close)
+        ts_volume_scaled = scaler_volume.fit_transform(ts_volume)
+        ts_combined = np.concatenate((ts_close_scaled, ts_volume_scaled), axis=1)
+
+        X, y = [], []
+        for i in range(len(ts_combined) - 30):
+            X.append(ts_combined[i:i+30, :])
+            y.append(ts_close_scaled[i+30, 0])
+        X, y = np.array(X), np.array(y)
+        X = np.reshape(X, (X.shape[0], X.shape[1], X.shape[2]))
+
+        model = Sequential()
+        model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], X.shape[2])))
+        model.add(LSTM(units=50, return_sequences=False))
+        model.add(Dense(units=25))
+        model.add(Dense(units=1))
+        model.compile(optimizer='adam', loss='mean_squared_error')
+        model.fit(X, y, epochs=10, batch_size=64)
+
+        inputs = ts_combined[-30:]
+        forecast = []
+        for i in range(days):
+            input_sequence = inputs[-30:]
+            input_sequence = np.reshape(input_sequence, (1, 30, X.shape[2]))
+            prediction = model.predict(input_sequence)
+            inputs = np.append(inputs, np.concatenate((prediction, np.random.rand(1, 1)), axis=1), axis=0)
+            forecast.append(prediction[0, 0])
+        forecast = scaler_close.inverse_transform(np.array(forecast).reshape(-1, 1))
+
+        plt.plot(self.stock_data['Close'].index, self.stock_data['Close'], label='Actual')
+        forecast_index = pd.date_range(start=self.stock_data.index[-1] + pd.DateOffset(days=1), periods=days)
+        plt.plot(forecast_index, forecast, label='Forecasted', linestyle='dashed')
+        plt.xlabel('Date')
+        plt.ylabel('Stock Price')
+        plt.title(f'{self.symbol} Stock Price - Actual vs Forecasted (LSTM)')
+        plt.legend()
+        plt.show()
+
 def main():
-    stock_manager = StockManager()
+    stock_manager = PortofolioManager()
+    stock_analysis = PortofolioAnalysis(stock_manager)
     data_file = "stock_data.json"
     stock_manager.load_from_file(data_file)
 
@@ -265,7 +333,7 @@ def main():
         print(f"------------------- Made by kangwijen, 2023. Version 1.1.0 -------------------")
         print(f"==============================================================================")
         print(f"{Fore.RED}Disclaimer: The developer is not responsible for any financial decisions made\n              based on the information provided by the program.{Style.RESET_ALL}")
-        print("\n1. Portfolio Management\n2. Portfolio Analysis\n3. Stock Analysis\n4. Save and Quit")
+        print("\n1. Portfolio Management\n2. Portfolio Analysis\n3. Stock Forecasting\n4. Stock Calculator\n5. Save and Quit")
         choice = input("Enter your choice: ")
 
         if choice == "1":
@@ -280,6 +348,11 @@ def main():
                         item = str(input("Enter stock code: ").upper().strip())
                         quantity = int(input("Enter quantity in lots to add: "))
                         price = float(input("Enter price per unit: "))
+                        try:
+                            market_price = yf.Ticker(f"{item}.JK").history(period="1d")["Close"][0]
+                        except IndexError:
+                            print(f"No data found for {item}. Skipping.")
+                            continue
                         stock_manager.add_stock(item, quantity, price)
                     except ValueError:
                         print("Invalid input. Quantity and price must be numeric values.")
@@ -306,7 +379,7 @@ def main():
                     stock_manager.delete_stock(item)
 
                 elif choice == "5":
-                    stock_manager.display_stock()
+                    stock_manager.display_portofolio()
 
                 elif choice == "6":
                     quit = True
@@ -324,10 +397,10 @@ def main():
                 choice = input("Enter your choice: ")
 
                 if choice == "1":
-                    stock_manager.overall_portfolio_performance()
+                    stock_analysis.overall_portfolio_performance()
 
                 elif choice == "2":
-                    stock_manager.display_risk_metrics()
+                    stock_analysis.display_risk_metrics()
                 
                 elif choice == "3":
                     quit = True
@@ -339,7 +412,7 @@ def main():
             quit = False
 
             while not quit:
-                print("\n1. SARIMAX Forecast\n3. Return")
+                print("\n1. SARIMAX Forecast\n2. LSTM Forecast\n3. Return")
                 choice = input("Enter your choice: ")
 
                 if choice == "1":
@@ -349,15 +422,35 @@ def main():
                     stock_forecast.sarimax_forecast(days=day)
 
                 elif choice == "2":
-                    print("Coming Soon!")
+                    item = str(input("Enter stock code: ").upper().strip())
+                    day = int(input("Enter number of days to forecast: "))
+                    stock_forecast = QuantitativeAnalysis(symbol=item)
+                    stock_forecast.lstm_forecast(day)
 
                 elif choice == "3":
                     quit = True
 
                 else:
                     print("Invalid choice.")
-        
+
         elif choice == "4":
+            quit = False
+
+            while not quit:
+                print("\n1. Stock\n2. Return")
+                choice = input("Enter your choice: ")
+
+                if choice == "1":
+                    print("Coming Soon")
+                    # bla bla bla
+
+                elif choice == "2":
+                    quit = True
+
+                else:
+                    print("Invalid choice.")
+        
+        elif choice == "5":
             stock_manager.save_to_file(data_file)
             break
 
