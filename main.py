@@ -13,6 +13,62 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
+def get_max_gain(price, input_str, board):
+    if price <= 50 and board != 3:
+        return 0.0
+    elif input_str.upper() == "ARA":
+        if board in {0, 1, 2}:
+            if 50 <= price <= 200:
+                return 0.35
+            elif price <= 5000:
+                return 0.25
+            else:
+                return 0.20
+        elif board == 3:
+            return 0.1
+        else:
+            return -3
+    elif input_str.upper() == "ARB":
+        if board == 0:
+            return -0.07
+        elif board == 1:
+            return -0.15
+        elif board == 2:
+            if 50 <= price <= 200:
+                return -0.35
+            elif price <= 5000:
+                return -0.25
+            else:
+                return -0.20
+        elif board == 3:
+            return -0.1
+        else:
+            return -3
+    else:
+        return -3
+
+def ipo_warrant_bep(stock_price, board, warrant, stock):
+    board += 1
+    stock_lots = 10000.00
+    multiplier = warrant / stock
+
+    if board == 2:
+        max_gain = get_max_gain(stock_price, "ARB", board)
+        loss = stock_price + (stock_price * max_gain)
+    elif board == 3:
+        loss = stock_price - (stock_price * 0.10)
+
+    warrant_lots = multiplier * stock_lots
+    result, price = 0.0, 0.0
+    base_stock = stock_lots * stock_price * 100.00
+    base_loss = stock_lots * 100 * loss
+
+    while result <= 0.00:
+        price += 1
+        result = (base_loss + (price * warrant_lots * 100.00)) / base_stock - 1
+
+    return price, result
+
 class PortofolioManager:
     def __init__(self):
         self.stock = {}
@@ -437,14 +493,23 @@ def main():
             quit = False
 
             while not quit:
-                print("\n1. Stock\n2. Return")
+                print("\n1. IPO Warrant BEP\n2. ARA/ARB Simulation (Coming Soon)\n3. Return")
                 choice = input("Enter your choice: ")
 
                 if choice == "1":
-                    print("Coming Soon")
-                    # bla bla bla
+                    stock_price = float(input("Enter stock price: "))
+                    stock, warrant = map(float, input("Enter warrant ratio (stock:warrant): ").split(':'))
+                    print("Select board")
+                    print("1. Utama/Pengembangan (Simetris ARA = ARB)")
+                    print("2. Akselerasi (ARA & ARB 10%)")
+                    board = int(input("Enter board: "))
+                    price, result = ipo_warrant_bep(stock_price, board, warrant, stock)
+                    print(f"Sell warrant for a minimum of {price:.0f}")
 
                 elif choice == "2":
+                    print("Coming Soon")                
+
+                elif choice == "3":
                     quit = True
 
                 else:
